@@ -38,24 +38,37 @@ SQL_INSERT = """
 """
 
 
+CSV_DANGEROUS_PREFIXES = frozenset({'=', '+', '-', '@', '\t', '\n'})
+
+
+def _sanitize_csv(value: str) -> str:
+    if value and value[0] in CSV_DANGEROUS_PREFIXES:
+        return "'" + value
+    return value
+
+
 class StorageWriter:
 
-    def __init__(self, config: Config) -> None:
-        timestamp = datetime.now().isoformat()
-        self.csv_path = f"{config.output_prefix}_{timestamp}.csv"
-        self.db_path = f"{config.output_prefix}_{timestamp}.db"
+    def __init__(self, config: Config, timestamp: str | None = None) -> None:
+        ts = timestamp or datetime.now().strftime('%Y-%m-%dT%H-%M-%S-%f')
+        self.csv_path = f"{config.output_prefix}_{ts}.csv"
+        self.db_path = f"{config.output_prefix}_{ts}.db"
         self._csv_file = None
         self._csv_writer = None
         self._db: aiosqlite.Connection | None = None
         self._headers_written = False
         self._counter = 0
         self._save_raw = config.save_raw
-        self._raw_pages_dir = f"raw_{timestamp}/pages" if self._save_raw else None
-        self._raw_dwg_dir = f"raw_{timestamp}/dwg" if self._save_raw else None
+        self._raw_pages_dir = f"raw_{ts}/pages" if self._save_raw else None
+        self._raw_dwg_dir = f"raw_{ts}/dwg" if self._save_raw else None
+
+    @property
+    def record_count(self) -> int:
+        return self._counter
 
     async def __aenter__(self) -> 'StorageWriter':
         self._csv_file = await aiofiles.open(self.csv_path, "w", newline="")
-        self._csv_writer = csv.writer(self._csv_file, delimiter=',', quotechar=';')
+        self._csv_writer = csv.writer(self._csv_file, delimiter=',', quotechar='"')
         self._db = await aiosqlite.connect(self.db_path)
         await self._db.execute(SQL_SCHEMA)
         logger.info("Output CSV: %s", self.csv_path)
@@ -67,9 +80,20 @@ class StorageWriter:
         return self
 
     async def __aexit__(self, *args) -> None:
-        await self._db.commit()
-        await self._csv_file.close()
-        await self._db.close()
+        try:
+            await self._db.commit()
+        except Exception:
+            pass
+        try:
+            if self._csv_file is not None:
+                await self._csv_file.close()
+        except Exception:
+            pass
+        try:
+            if self._db is not None:
+                await self._db.close()
+        except Exception:
+            pass
 
     async def save_raw_page(self, page_number: int, text: str) -> None:
         if not self._save_raw:
@@ -95,8 +119,10 @@ class StorageWriter:
             await self._csv_writer.writerow(CSV_HEADERS)
             self._headers_written = True
 
-        await self._csv_writer.writerow([str(self._counter)] + record.to_csv_row())
+        row = [_sanitize_csv(v) for v in record.to_csv_row()]
+        await self._csv_writer.writerow([str(self._counter)] + row)
         await self._db.execute(SQL_INSERT, record.to_db_tuple())
 
     async def flush(self) -> None:
+        await self._csv_file.flush()
         await self._db.commit()
