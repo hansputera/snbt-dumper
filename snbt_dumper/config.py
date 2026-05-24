@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -10,3 +10,11 @@ class Config:
     page_size: int = 1000
     max_retries: int = 3
     save_raw: bool = True
+
+    def __post_init__(self) -> None:
+        if self.max_concurrent < 1:
+            raise ValueError("max_concurrent must be >= 1")
+        if self.page_size < 1 or self.page_size > 1000:
+            raise ValueError("page_size must be between 1 and 1000")
+        if self.max_retries < 0:
+            raise ValueError("max_retries must be >= 0")
