@@ -9,3 +9,4 @@ class Config:
     page_batch_size: int = 20
     page_size: int = 1000
     max_retries: int = 3
+    save_raw: bool = True
