@@ -3,7 +3,7 @@ import json
 import logging
 import random
 import xmltodict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 
 import aiohttp
@@ -16,11 +16,20 @@ logger = logging.getLogger(__name__)
 
 class GCSFetcher:
 
-    def __init__(self, config: Config, session: aiohttp.ClientSession) -> None:
+    def __init__(
+        self,
+        config: Config,
+        session: aiohttp.ClientSession,
+        on_page: collections.abc.Callable[[int, str], Awaitable[None]] | None = None,
+        on_dwg: collections.abc.Callable[[str, str], Awaitable[None]] | None = None,
+    ) -> None:
         self.config = config
         self.session = session
         self.semaphore = asyncio.Semaphore(config.max_concurrent)
         self._executor = ThreadPoolExecutor()
+        self._on_page = on_page
+        self._on_dwg = on_dwg
+        self._page_seq = 0
 
     async def list_dwg_key_batches(self) -> AsyncIterator[list[str]]:
         params: dict[str, str] = {'maxResults': str(self.config.page_size)}
@@ -35,6 +44,10 @@ class GCSFetcher:
             async with self.session.get(self.config.storage_url, params=params, headers=random_headers()) as resp:
                 resp.raise_for_status()
                 text = await resp.text()
+
+            self._page_seq += 1
+            if self._on_page:
+                await self._on_page(self._page_seq, text)
 
             loop = asyncio.get_event_loop()
             dictxml = await loop.run_in_executor(self._executor, xmltodict.parse, text)
@@ -67,6 +80,8 @@ class GCSFetcher:
                     async with self.session.get(url, headers=random_headers()) as resp:
                         resp.raise_for_status()
                         text = await resp.text()
+                        if self._on_dwg:
+                            await self._on_dwg(key, text)
                         return json.loads(text)
             except Exception as e:
                 if attempt == self.config.max_retries - 1:
