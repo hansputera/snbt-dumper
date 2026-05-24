@@ -20,8 +20,8 @@ class GCSFetcher:
         self,
         config: Config,
         session: aiohttp.ClientSession,
-        on_page: collections.abc.Callable[[int, str], Awaitable[None]] | None = None,
-        on_dwg: collections.abc.Callable[[str, str], Awaitable[None]] | None = None,
+        on_page: Callable[[int, str], Awaitable[None]] | None = None,
+        on_dwg: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> None:
         self.config = config
         self.session = session
@@ -30,6 +30,9 @@ class GCSFetcher:
         self._on_page = on_page
         self._on_dwg = on_dwg
         self._page_seq = 0
+
+    def __del__(self) -> None:
+        self._executor.shutdown(wait=False)
 
     async def list_dwg_key_batches(self) -> AsyncIterator[list[str]]:
         params: dict[str, str] = {'maxResults': str(self.config.page_size)}
@@ -49,7 +52,7 @@ class GCSFetcher:
             if self._on_page:
                 await self._on_page(self._page_seq, text)
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             dictxml = await loop.run_in_executor(self._executor, xmltodict.parse, text)
 
             contents = dictxml.get('ListBucketResult', {}).get('Contents', []) or []
@@ -78,12 +81,21 @@ class GCSFetcher:
                 async with self.semaphore:
                     await asyncio.sleep(random.uniform(0.2, 0.8))
                     async with self.session.get(url, headers=random_headers()) as resp:
-                        resp.raise_for_status()
                         text = await resp.text()
+
+                        if resp.status >= 400:
+                            if 400 <= resp.status < 500 and resp.status != 429:
+                                logger.warning("Client error %d for %s, not retrying", resp.status, key)
+                                return None
+                            resp.raise_for_status()
+
                         if self._on_dwg:
                             await self._on_dwg(key, text)
                         return json.loads(text)
-            except Exception as e:
+            except json.JSONDecodeError as e:
+                logger.warning("Invalid JSON for %s: %s", key, e)
+                return None
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 if attempt == self.config.max_retries - 1:
                     logger.warning("Failed to fetch %s after %d attempts: %s", key, self.config.max_retries, e)
                     return None
