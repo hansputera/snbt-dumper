@@ -4,3 +4,5 @@ include/
 bin/
 lib64/
 lib64
+*.egg-info/
+snbt_dump_*

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "snbt-dumper"
+version = "0.2.0"
+description = "Dump SNBT announcement data from Google Cloud Storage to CSV and SQLite"
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.9",
+    "aiosqlite>=0.20",
+    "aiofiles>=24.1",
+    "xmltodict>=0.13",
+    "tqdm>=4.66",
+]
+
+[project.scripts]
+snbt-dumper = "snbt_dumper.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["snbt_dumper*"]
