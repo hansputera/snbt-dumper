@@ -1,0 +1,16 @@
+.git/
+.gitignore
+.gitattributes
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+snbt_dump_*
+raw_*
+lib/
+include/
+bin/
+lib64/
+pyvenv.cfg
+*.md
+LICENSE
