@@ -66,9 +66,17 @@ Polls `deadline.js` every 30 seconds until the GCS bucket is accessible (200 OK)
 python -m snbt_dumper watch
 python -m snbt_dumper watch --interval 60
 
-# Docker
+# Docker (foreground)
 docker run --rm -v "$PWD":/data snbt-dumper watch
 docker run --rm -v "$PWD":/data snbt-dumper watch --interval 60
+
+# Docker (background / daemon)
+docker run -d --name snbt-watch -v "$PWD":/data snbt-dumper watch
+docker logs snbt-watch -f          # follow logs
+docker stop snbt-watch             # stop when done
+
+# Docker (background with auto-restart)
+docker run -d --restart on-failure --name snbt-watch -v "$PWD":/data snbt-dumper watch
 ```
 
 ### Options
