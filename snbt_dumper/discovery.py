@@ -1,13 +1,15 @@
 import logging
 import re
 
+from .user_agents import random_user_agent
+
 logger = logging.getLogger(__name__)
 
 DEADLINE_JS_URL = 'https://pengumuman-snbt.snpmb.id/deadline.js'
 
 
 async def fetch_deadline_js(session) -> str:
-    async with session.get(DEADLINE_JS_URL) as resp:
+    async with session.get(DEADLINE_JS_URL, headers={'User-Agent': random_user_agent()}) as resp:
         resp.raise_for_status()
         return await resp.text()
 
@@ -21,7 +23,7 @@ def extract_dataurl(js_text: str) -> str | None:
 
 async def check_bucket_accessible(session, url: str) -> bool:
     try:
-        async with session.head(url, timeout=10) as resp:
+        async with session.head(url, timeout=10, headers={'User-Agent': random_user_agent()}) as resp:
             return resp.status == 200
     except Exception as e:
         logger.debug("Bucket %s not accessible: %s", url, e)

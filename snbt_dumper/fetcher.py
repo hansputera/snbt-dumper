@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import aiohttp
 
 from .config import Config
+from .user_agents import random_user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class GCSFetcher:
             if next_marker:
                 params['marker'] = next_marker
 
-            async with self.session.get(self.config.storage_url, params=params) as resp:
+            async with self.session.get(self.config.storage_url, params=params, headers={'User-Agent': random_user_agent()}) as resp:
                 resp.raise_for_status()
                 text = await resp.text()
 
@@ -61,7 +62,7 @@ class GCSFetcher:
         for attempt in range(self.config.max_retries):
             try:
                 async with self.semaphore:
-                    async with self.session.get(url, headers={'Accept': 'application/json'}) as resp:
+                    async with self.session.get(url, headers={'Accept': 'application/json', 'User-Agent': random_user_agent()}) as resp:
                         resp.raise_for_status()
                         text = await resp.text()
                         return json.loads(text)
