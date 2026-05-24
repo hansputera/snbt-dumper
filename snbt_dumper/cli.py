@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import os
 from datetime import datetime
 
 import aiohttp
@@ -66,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Polling interval in seconds for watch mode (default: %(default)s)",
     )
     parser.add_argument(
+        "--no-save-raw",
+        action="store_true",
+        help="Don't save raw bucket listing pages and DWG files",
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable debug logging",
@@ -81,6 +87,7 @@ def config_from_args(args: argparse.Namespace) -> Config:
         page_batch_size=args.batch_size,
         page_size=args.page_size,
         max_retries=args.retries,
+        save_raw=not args.no_save_raw,
     )
 
 
@@ -88,9 +95,18 @@ async def run_dump(config: Config, session: aiohttp.ClientSession) -> None:
     start = datetime.now()
     logger.info("Starting SNBT dumper (concurrency=%d, batch=%d pages)", config.max_concurrent, config.page_batch_size)
 
-    fetcher = GCSFetcher(config, session)
+    if config.save_raw:
+        timestamp = datetime.now().isoformat()
+        os.makedirs(f"raw_{timestamp}/pages", exist_ok=True)
+        os.makedirs(f"raw_{timestamp}/dwg", exist_ok=True)
 
     async with StorageWriter(config) as writer:
+        fetcher = GCSFetcher(
+            config, session,
+            on_page=writer.save_raw_page if config.save_raw else None,
+            on_dwg=writer.save_raw_dwg if config.save_raw else None,
+        )
+
         logger.info("Listing .dwg keys from bucket %s ...", config.storage_url)
         async for batch_idx, batch_keys in enumerate(fetcher.list_dwg_key_batches(), 1):
             logger.info("Batch %d: processing %d keys", batch_idx, len(batch_keys))
